@@ -1,55 +1,79 @@
 import os
-import warnings
-from langchain_community.vectorstores import Chroma
-from langchain_community.document_loaders import TextLoader, DirectoryLoader, PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-import google.generativeai as genai
+from typing import List, Optional
 from dotenv import load_dotenv
+from langchain_community.document_loaders import DirectoryLoader, TextLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import Chroma
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
 load_dotenv()
 
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+# Constants
+DOCS_DIR = "./docs/"
+DB_DIR = "./vector_db/"
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 200
 
-genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+class DocumentProcessor:
+    def __init__(self, docs_dir: str, db_dir: str):
+        self.docs_dir = docs_dir
+        self.db_dir = db_dir
+        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
-persist_directory = "./db/memory/"
+    def load_documents(self) -> List[str]:
+        if not os.path.exists(self.docs_dir):
+            raise FileNotFoundError(f"Directory '{self.docs_dir}' does not exist.")
+        
+        files = [f for f in os.listdir(self.docs_dir) if f.endswith('.txt')]
+        if not files:
+            raise ValueError(f"No .txt files found in '{self.docs_dir}'.")
+        
+        loader = DirectoryLoader(self.docs_dir, glob="**/*.txt", loader_cls=TextLoader)
+        documents = loader.load()
+        return [doc.page_content for doc in documents]
 
-embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    def split_documents(self, documents: List[str]) -> List[str]:
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP,
+        )
+        return text_splitter.split_text("\n\n".join(documents))
 
+    def create_vector_store(self, splits: List[str]) -> Optional[Chroma]:
+        if not splits:
+            print("Error: No text splits to create vector store.")
+            return None
+        
+        vector_store = Chroma.from_texts(
+            texts=splits,
+            embedding=self.embeddings,
+            persist_directory=self.db_dir
+        )
+        return vector_store
 
-def batch_insert(data, batch_size, embeddings, persist_directory):
-    vectordb = Chroma(persist_directory=persist_directory, embedding_function=embeddings)
-    for i in range(0, len(data), batch_size):
-        batch = data[i:i + batch_size]
-        vectordb.add_texts(batch)
-    vectordb.persist()
-    return vectordb
+    def process(self):
+        try:
+            print("Loading documents...")
+            documents = self.load_documents()
+            print(f"Loaded {len(documents)} documents.")
 
-if not os.path.exists(persist_directory):
-    print('Starting bot. This might take a while...')
-    
-    pdf_loader = DirectoryLoader("./docs/", glob="*.pdf", loader_cls=PyPDFLoader)
-    text_loader = DirectoryLoader("./docs/", glob="*.txt", loader_cls=TextLoader)
-    
-    pdf_documents = pdf_loader.load()
-    text_documents = text_loader.load()
-    
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=1)
-    
-    pdf_context = "\n\n".join(str(p.page_content) for p in pdf_documents)
-    text_context = "\n\n".join(str(p.page_content) for p in text_documents)
+            print("Splitting documents...")
+            splits = self.split_documents(documents)
+            print(f"Created {len(splits)} splits.")
 
-    pdfs = splitter.split_text(pdf_context)
-    texts = splitter.split_text(text_context)
+            print("Creating vector store...")
+            vector_store = self.create_vector_store(splits)
+            if vector_store:
+                print(f"Vector store created with {vector_store._collection.count()} embeddings.")
+                print("Vector store persisted to:", self.db_dir)
+            else:
+                print("Failed to create vector store.")
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
 
-    data = pdfs + texts
+def main():
+    processor = DocumentProcessor(DOCS_DIR, DB_DIR)
+    processor.process()
 
-    print("Data Processing Complete")
-    
-    vectordb = batch_insert(data, 5461, embeddings, persist_directory)
-    print("Vector DB Creating Complete\n")
-
-else:
-    vectordb = Chroma(persist_directory=persist_directory, embedding_function=embeddings)
-    print("Vector DB Loaded\n")
+if __name__ == "__main__":
+    main()
