@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
-persist_directory = "./db/LionBat/"
+persist_directory = "./db/memory/"
 
 embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 

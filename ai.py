@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 load_dotenv()
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-persist_directory = "./db/LionBat/" 
+persist_directory = "./db/memory/" 
 embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
 model = ChatGoogleGenerativeAI(
@@ -34,8 +34,7 @@ bot = genai.GenerativeModel(
   model_name="gemini-1.5-flash",
   generation_config=bot_config,
   system_instruction=""" your name is sunny , 
-  dont use * or any markdown return only plain text,
-you are a  lithium battery technology expert by Zetrance Technology,
+  dont use * or any markdown return only plain text,y,
 you are an instructor bot you only tell information related to lithium ion battrys and given extra data ,
 you will be provided a template for question and extra info in this manner
 prompt = {question} extra_data = {hint}
