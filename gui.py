@@ -1,6 +1,6 @@
 import os
 import tkinter as tk
-from tkinter import scrolledtext, Entry, Button, END
+from tkinter import scrolledtext, Entry, Button, END, Frame, Label
 from typing import Dict, Any
 from dotenv import load_dotenv
 from langchain_community.vectorstores import Chroma
@@ -33,7 +33,7 @@ class QASystem:
         llm = ChatGoogleGenerativeAI(model=MODEL_NAME, temperature=TEMPERATURE)
         
         prompt_template = """Use the following pieces of context to answer the question at the end.
-        If you don't know the answer, just act as an friendly chat bot and say u lack actual knowledge about the question.
+        If you don't know the answer, just made up ur own answer.
         {context}
         Question: {question}
         Helpful Answer:"""
@@ -58,32 +58,57 @@ class ChatbotGUI:
         self.qa_system = qa_system
         self.window = tk.Tk()
         self.window.title("RAG Chatbot")
-        self.window.geometry("600x400")
+        self.window.geometry("800x600")
+        self.window.configure(bg="#2b2b2b")
 
-        # Center the chat history
-        frame = tk.Frame(self.window)
-        frame.pack(expand=True, fill=tk.BOTH)
+        self.create_widgets()
 
-        self.chat_history = scrolledtext.ScrolledText(frame, wrap=tk.WORD, width=70, height=20)
-        self.chat_history.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
+    def create_widgets(self):
+        # Main frame
+        main_frame = Frame(self.window, bg="#2b2b2b")
+        main_frame.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
+
+        # Chat frame (left side)
+        chat_frame = Frame(main_frame, bg="#2b2b2b")
+        chat_frame.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
+
+        # Chat history
+        self.chat_history = scrolledtext.ScrolledText(chat_frame, wrap=tk.WORD, width=50, height=25, bg="#3b3b3b", fg="white")
+        self.chat_history.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
         self.chat_history.config(state=tk.DISABLED)
 
-        self.user_input = Entry(self.window, width=50)
-        self.user_input.pack(side=tk.LEFT, padx=10, pady=(0, 10))
+        # Input frame
+        input_frame = Frame(chat_frame, bg="#2b2b2b")
+        input_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        self.send_button = Button(self.window, text="Send", command=self.send_message)
-        self.send_button.pack(side=tk.LEFT, pady=(0, 10))
+        self.user_input = Entry(input_frame, bg="#4a4a4a", fg="white", insertbackground="white")
+        self.user_input.pack(side=tk.LEFT, expand=True, fill=tk.X)
+
+        self.send_button = Button(input_frame, text="Send", command=self.send_message, bg="#5a5a5a", fg="white", activebackground="#6a6a6a", activeforeground="white")
+        self.send_button.pack(side=tk.RIGHT, padx=(5, 0))
 
         self.user_input.bind("<Return>", lambda event: self.send_message())
 
+        # Sources frame (right side)
+        sources_frame = Frame(main_frame, bg="#2b2b2b")
+        sources_frame.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
+
+        sources_label = Label(sources_frame, text="Sources", bg="#2b2b2b", fg="white", font=("Arial", 12, "bold"))
+        sources_label.pack(pady=(0, 5))
+
+        self.sources_text = scrolledtext.ScrolledText(sources_frame, wrap=tk.WORD, width=30, height=25, bg="#3b3b3b", fg="white")
+        self.sources_text.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
+        self.sources_text.config(state=tk.DISABLED)
+
         # Configure text tags for colors
-        self.chat_history.tag_configure("blue", foreground="blue")
-        self.chat_history.tag_configure("green", foreground="green")
+        self.chat_history.tag_configure("user", foreground="#4CAF50")
+        self.chat_history.tag_configure("bot", foreground="#2196F3")
+        self.chat_history.tag_configure("system", foreground="#FFC107")
 
     def send_message(self):
         user_message = self.user_input.get()
         if user_message.strip() != "":
-            self.display_message("You: " + user_message)
+            self.display_message("You: " + user_message, "user")
             self.user_input.delete(0, END)
 
             try:
@@ -91,21 +116,23 @@ class ChatbotGUI:
                 answer = result["result"]
                 sources = result["source_documents"][:2]
 
-                self.display_message("Chatbot: \n" + answer, "blue")
-                self.display_message("\nSources:\n", "green")
-                for doc in sources:
-                    self.display_message(doc.page_content[:200] + "...", "green")
+                self.display_message("Chatbot: " + answer, "bot")
+                self.display_sources(sources)
             except Exception as e:
-                self.display_message(f"An error occurred: {str(e)}")
+                self.display_message(f"An error occurred: {str(e)}", "system")
 
-    def display_message(self, message, color=None):
+    def display_message(self, message, tag):
         self.chat_history.config(state=tk.NORMAL)
-        if color:
-            self.chat_history.insert(tk.END, message + "\n\n", color)
-        else:
-            self.chat_history.insert(tk.END, message + "\n\n")
+        self.chat_history.insert(tk.END, message + "\n\n", tag)
         self.chat_history.see(tk.END)
         self.chat_history.config(state=tk.DISABLED)
+
+    def display_sources(self, sources):
+        self.sources_text.config(state=tk.NORMAL)
+        self.sources_text.delete('1.0', END)
+        for i, doc in enumerate(sources, 1):
+            self.sources_text.insert(END, f"Source {i}:\n{doc.page_content[:200]}...\n\n")
+        self.sources_text.config(state=tk.DISABLED)
 
     def run(self):
         self.window.mainloop()
