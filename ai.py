@@ -1,4 +1,3 @@
-import os
 import tkinter as tk
 from tkinter import scrolledtext, Entry, Button, END
 from typing import Dict, Any
@@ -14,7 +13,6 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 load_dotenv()
 
-# Constants
 DB_DIR = "./vector_db/"
 MODEL_NAME = "gemini-pro"
 TEMPERATURE = 0.3

@@ -1,4 +1,3 @@
-import os
 import tkinter as tk
 from tkinter import scrolledtext, Entry, Button, END, Frame, Label
 from typing import Dict, Any
@@ -8,6 +7,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGener
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 import warnings
+import time
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -33,7 +33,7 @@ class QASystem:
         llm = ChatGoogleGenerativeAI(model=MODEL_NAME, temperature=TEMPERATURE)
         
         prompt_template = """Use the following pieces of context to answer the question at the end.
-        If you don't know the answer, just made up ur own answer.
+        If you don't know the answer, just say that you dont know the answer.
         {context}
         Question: {question}
         Helpful Answer:"""
@@ -51,7 +51,19 @@ class QASystem:
         )
 
     def answer_question(self, question: str) -> Dict[str, Any]:
-        return self.qa_chain.invoke({"query": question})
+        # Time the vector search
+        search_start = time.time()
+        docs = self.vector_store.similarity_search(question)
+        search_time = (time.time() - search_start) * 1000  # Convert to milliseconds
+        
+        # Time the response generation
+        generation_start = time.time()
+        result = self.qa_chain.invoke({"query": question})
+        generation_time = (time.time() - generation_start) * 1000  # Convert to milliseconds
+        
+        result['search_time'] = search_time
+        result['generation_time'] = generation_time
+        return result
 
 class ChatbotGUI:
     def __init__(self, qa_system: QASystem):
@@ -89,16 +101,35 @@ class ChatbotGUI:
 
         self.user_input.bind("<Return>", lambda event: self.send_message())
 
-        # Sources frame (right side)
-        sources_frame = Frame(main_frame, bg="#2b2b2b")
-        sources_frame.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
+        # Right side frame
+        right_frame = Frame(main_frame, bg="#2b2b2b")
+        right_frame.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
 
-        sources_label = Label(sources_frame, text="Sources", bg="#2b2b2b", fg="white", font=("Arial", 12, "bold"))
+        # Sources section
+        sources_label = Label(right_frame, text="Sources", bg="#2b2b2b", fg="white", font=("Arial", 12, "bold"))
         sources_label.pack(pady=(0, 5))
 
-        self.sources_text = scrolledtext.ScrolledText(sources_frame, wrap=tk.WORD, width=30, height=25, bg="#3b3b3b", fg="white")
+        self.sources_text = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, width=30, height=20, bg="#3b3b3b", fg="white")
         self.sources_text.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
         self.sources_text.config(state=tk.DISABLED)
+
+        # Benchmarks section
+        benchmarks_frame = Frame(right_frame, bg="#2b2b2b")
+        benchmarks_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # Vector Search Time
+        search_frame = Frame(benchmarks_frame, bg="#2b2b2b")
+        search_frame.pack(fill=tk.X, pady=2)
+        Label(search_frame, text="Vector Search:", bg="#2b2b2b", fg="white").pack(side=tk.LEFT)
+        self.search_time_label = Label(search_frame, text="0 ms", bg="#2b2b2b", fg="#4CAF50")
+        self.search_time_label.pack(side=tk.RIGHT)
+
+        # Response Generation Time
+        generation_frame = Frame(benchmarks_frame, bg="#2b2b2b")
+        generation_frame.pack(fill=tk.X, pady=2)
+        Label(generation_frame, text="Response Generation:", bg="#2b2b2b", fg="white").pack(side=tk.LEFT)
+        self.generation_time_label = Label(generation_frame, text="0 ms", bg="#2b2b2b", fg="#4CAF50")
+        self.generation_time_label.pack(side=tk.RIGHT)
 
         # Configure text tags for colors
         self.chat_history.tag_configure("user", foreground="#4CAF50")
@@ -115,9 +146,12 @@ class ChatbotGUI:
                 result = self.qa_system.answer_question(user_message)
                 answer = result["result"]
                 sources = result["source_documents"][:2]
+                search_time = result["search_time"]
+                generation_time = result["generation_time"]
 
                 self.display_message("Chatbot: " + answer, "bot")
                 self.display_sources(sources)
+                self.update_benchmarks(search_time, generation_time)
             except Exception as e:
                 self.display_message(f"An error occurred: {str(e)}", "system")
 
@@ -133,6 +167,10 @@ class ChatbotGUI:
         for i, doc in enumerate(sources, 1):
             self.sources_text.insert(END, f"Source {i}:\n{doc.page_content[:200]}...\n\n")
         self.sources_text.config(state=tk.DISABLED)
+
+    def update_benchmarks(self, search_time: float, generation_time: float):
+        self.search_time_label.config(text=f"{search_time:.2f} ms")
+        self.generation_time_label.config(text=f"{generation_time:.2f} ms")
 
     def run(self):
         self.window.mainloop()
